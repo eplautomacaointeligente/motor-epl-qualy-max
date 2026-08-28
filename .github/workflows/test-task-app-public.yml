@@ -1,0 +1,47 @@
+name: Test task app public access
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'task-app/index-publico.html'
+      - '.github/workflows/test-task-app-public.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test anonymous GET
+        run: |
+          set -euo pipefail
+          API='https://ep-autumn-heart-aepwnqo2.apirest.c-2.us-east-2.aws.neon.tech/neondb/rest/v1'
+          code=$(curl -sS -o /tmp/get.json -w '%{http_code}' "$API/tasks?select=id,nome&limit=1")
+          cat /tmp/get.json
+          test "$code" = "200"
+      - name: Test CORS preflight
+        run: |
+          set -euo pipefail
+          API='https://ep-autumn-heart-aepwnqo2.apirest.c-2.us-east-2.aws.neon.tech/neondb/rest/v1'
+          curl -sS -D /tmp/headers -o /dev/null -X OPTIONS "$API/tasks" \
+            -H 'Origin: https://htmlpreview.github.io' \
+            -H 'Access-Control-Request-Method: POST' \
+            -H 'Access-Control-Request-Headers: content-type,prefer'
+          cat /tmp/headers
+          grep -qi '^access-control-allow-origin:' /tmp/headers
+      - name: Test anonymous CRUD
+        run: |
+          set -euo pipefail
+          API='https://ep-autumn-heart-aepwnqo2.apirest.c-2.us-east-2.aws.neon.tech/neondb/rest/v1'
+          ID="test-$(date +%s)-$RANDOM"
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          payload=$(printf '{"id":"%s","categoria":"Documento","nome":"Teste automático","solicitante":"Sistema","responsaveis":"Sistema","prazo":"","status":"Pendente","obs":"validação","created_at":"%s","updated_at":"%s"}' "$ID" "$NOW" "$NOW")
+          code=$(curl -sS -o /tmp/post.json -w '%{http_code}' -X POST "$API/tasks" -H 'Content-Type: application/json' -H 'Prefer: return=minimal' --data "$payload")
+          cat /tmp/post.json || true
+          test "$code" = "201" -o "$code" = "204"
+          code=$(curl -sS -o /tmp/patch.json -w '%{http_code}' -X PATCH "$API/tasks?id=eq.$ID" -H 'Content-Type: application/json' -H 'Prefer: return=minimal' --data '{"status":"Em andamento"}')
+          cat /tmp/patch.json || true
+          test "$code" = "204" -o "$code" = "200"
+          code=$(curl -sS -o /tmp/del.json -w '%{http_code}' -X DELETE "$API/tasks?id=eq.$ID" -H 'Prefer: return=minimal')
+          cat /tmp/del.json || true
+          test "$code" = "204" -o "$code" = "200"
