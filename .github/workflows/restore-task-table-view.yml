@@ -1,0 +1,101 @@
+name: Restore task table view
+
+on:
+  push:
+    paths:
+      - '.github/workflows/restore-task-table-view.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Restore compact table visualization
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('task-app/index.html')
+          s=p.read_text(encoding='utf-8')
+          marker='<!-- TASK_TABLE_VIEW_V1 -->'
+          if marker in s:
+              print('Table view already enabled')
+              raise SystemExit(0)
+          addon=r'''
+
+<!-- TASK_TABLE_VIEW_V1 -->
+<style>
+.task-table-wrap{width:100%;overflow-x:auto;border:1px solid var(--border);border-radius:12px;background:var(--surface);margin-top:9px;-webkit-overflow-scrolling:touch}
+.task-table{width:100%;min-width:1120px;border-collapse:collapse;table-layout:fixed}
+.task-table thead{background:#22273c;border-bottom:1px solid #343a52}
+.task-table th{padding:11px 10px;text-align:left;color:#7182bb;font-size:9px;letter-spacing:.05em;text-transform:uppercase;font-weight:800;white-space:nowrap}
+.task-table td{padding:12px 10px;border-bottom:1px solid #292e40;font-size:12px;vertical-align:middle;color:var(--text)}
+.task-table tbody tr:last-child td{border-bottom:0}
+.task-table .col-exp{width:46px;text-align:center}.task-table .col-cat{width:130px}.task-table .col-name{width:305px}.task-table .col-request{width:155px}.task-table .col-owner{width:140px}.task-table .col-date{width:125px}.task-table .col-status{width:118px}.task-table .col-actions{width:80px}.task-table .col-obs{width:68px}.task-table .col-controls{width:110px;text-align:right}
+.task-table .task-name{font-weight:750;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.task-table .cell-ellipsis{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.category-pill,.status-pill{display:inline-flex;align-items:center;min-height:22px;padding:3px 10px;border-radius:999px;font-size:10px;font-weight:700;white-space:nowrap}
+.category-pill{background:#24305b;color:#9fb4ff}
+.status-pill.pending{background:#493715;color:#ffb000}.status-pill.progress{background:#173d56;color:#61c5ff}.status-pill.done{background:#173d2a;color:#58d68d}.status-pill.cancelled{background:#3a2931;color:#f38aa8}
+.deadline.open{color:#ffb000;font-weight:800}.deadline.overdue{color:#fb7185;font-weight:800}.deadline.done{color:#8a93b2}
+.expand-btn,.icon-btn{display:inline-flex;align-items:center;justify-content:center;border:1px solid transparent;background:transparent;color:#7f89aa;cursor:pointer}
+.expand-btn{width:30px;height:30px;border-radius:8px;font-size:18px;transition:.15s}.expand-btn:hover{background:#252a3b;color:#fff}.expand-btn.open{transform:rotate(90deg);color:#a5b4fc}
+.icon-btn{width:38px;height:30px;border-radius:10px;border-color:#30364b;margin-left:4px;font-size:14px}.icon-btn.edit{color:#ff9d4d}.icon-btn.delete{color:#a9aec4}.icon-btn:hover{background:#252a3b}
+.table-dash{color:#717a9c}.obs-indicator{display:inline-flex;align-items:center;justify-content:center;min-width:24px;color:#9aa6d4}
+.expanded-row td{padding:0!important;background:#141722}.expanded-content{padding:14px 18px 16px 58px}.expanded-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-bottom:10px}.expanded-note{background:#11141d;border:1px solid #282e41;border-radius:9px;padding:10px;min-width:0}.expanded-note b{display:block;font-size:9px;color:#7f89aa;text-transform:uppercase;margin-bottom:5px}.expanded-note div{font-size:11px;color:#cbd0df;white-space:pre-wrap;overflow-wrap:anywhere}.expanded-content .subtasks{margin-top:10px;border:1px solid #282e41;border-radius:10px}
+@media(max-width:720px){.task-table-wrap{border-radius:10px}.task-table{min-width:1040px}.task-table th,.task-table td{padding-top:10px;padding-bottom:10px}.expanded-content{padding-left:14px}.expanded-grid{grid-template-columns:1fr}}
+</style>
+<script>
+(()=>{
+  const previousRender=render;
+  function tableStatusClass(status){if(status==='Pendente')return'pending';if(status==='Em andamento')return'progress';if(status==='Concluído')return'done';return'cancelled'}
+  function tableDeadlineClass(t){if(!t.prazo)return'';if(['Concluído','Cancelado'].includes(t.status))return'done';const today=new Date().toISOString().slice(0,10);return t.prazo<today?'overdue':'open'}
+  function tableExpanded(t){
+    const notes=[];
+    if(t.obs)notes.push(`<div class="expanded-note"><b>Observações</b><div>${esc(t.obs)}</div></div>`);
+    if(t.desafios)notes.push(`<div class="expanded-note"><b>Desafios</b><div>${esc(t.desafios)}</div></div>`);
+    if(t.problemas)notes.push(`<div class="expanded-note"><b>Problemas</b><div>${esc(t.problemas)}</div></div>`);
+    if(t.solucoes)notes.push(`<div class="expanded-note"><b>Soluções</b><div>${esc(t.solucoes)}</div></div>`);
+    return `<tr class="expanded-row"><td colspan="10"><div class="expanded-content">${notes.length?`<div class="expanded-grid">${notes.join('')}</div>`:''}${subs(t)}</div></td></tr>`;
+  }
+  function tableRow(t){
+    const done=(t.miniAcoes||[]).filter(a=>Number(a.concluida)===1).length,total=(t.miniAcoes||[]).length;
+    const actionText=total?`${done}/${total}`:'—';
+    const obsText=(t.obs||t.desafios||t.problemas||t.solucoes)?'●':'—';
+    return `<tr>
+      <td class="col-exp"><button class="expand-btn ${expanded.has(t.id)?'open':''}" onclick="toggleTask('${t.id}')" aria-label="${expanded.has(t.id)?'Recolher':'Expandir'} demanda">›</button></td>
+      <td class="col-cat"><span class="category-pill">${esc(t.categoria)}</span></td>
+      <td class="col-name"><div class="task-name" title="${esc(t.nome)}">${esc(t.nome)}</div></td>
+      <td class="col-request cell-ellipsis" title="${esc(t.solicitante)}">${esc(t.solicitante)}</td>
+      <td class="col-owner cell-ellipsis" title="${esc(t.responsaveis)}">${esc(t.responsaveis)}</td>
+      <td class="col-date"><span class="deadline ${tableDeadlineClass(t)}">${fmt(t.prazo)}</span></td>
+      <td class="col-status"><span class="status-pill ${tableStatusClass(t.status)}">${esc(t.status)}</span></td>
+      <td class="col-actions"><span class="${total?'':'table-dash'}">${actionText}</span></td>
+      <td class="col-obs"><span class="obs-indicator ${obsText==='—'?'table-dash':''}" title="${obsText==='●'?'Há observações ou registros':''}">${obsText}</span></td>
+      <td class="col-controls"><button class="icon-btn edit" onclick="editTask('${t.id}')" title="Editar">✎</button><button class="icon-btn delete" onclick="deleteTask('${t.id}')" title="Excluir">⌫</button></td>
+    </tr>${expanded.has(t.id)?tableExpanded(t):''}`;
+  }
+  function renderTaskTable(){
+    const q=$('search').value.toLowerCase(),fs=$('filterStatus').value,fc=$('filterCat').value;
+    const data=tasks.filter(t=>(!q||[t.nome,t.solicitante,t.responsaveis,t.categoria,t.obs,t.desafios,t.problemas,t.solucoes].join(' ').toLowerCase().includes(q))&&(!fs||t.status===fs)&&(!fc||t.categoria===fc));
+    if(!data.length){$('list').innerHTML='<div class="panel empty">Nenhuma tarefa encontrada.</div>';return}
+    $('list').innerHTML=`<div class="task-table-wrap"><table class="task-table"><thead><tr><th class="col-exp"></th><th class="col-cat">Categoria</th><th class="col-name">Nome</th><th class="col-request">Solicitante</th><th class="col-owner">Responsáveis</th><th class="col-date">Prazo</th><th class="col-status">Status</th><th class="col-actions">Ações</th><th class="col-obs">Obs.</th><th class="col-controls"></th></tr></thead><tbody>${data.map(tableRow).join('')}</tbody></table></div>`;
+  }
+  render=function(){previousRender();renderTaskTable()};
+  render();
+})();
+</script>
+'''
+          p.write_text(s+addon,encoding='utf-8')
+      - name: Commit changes
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name 'eplautomacaointeligente'
+          git config user.email 'epl.automacaointeligente@hotmail.com'
+          git add task-app/index.html
+          git commit -m 'Mantém demandas em visualização tabular compacta'
+          git push origin main
