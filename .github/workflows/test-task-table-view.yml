@@ -1,0 +1,28 @@
+name: Test task table view
+
+on:
+  push:
+    paths:
+      - '.github/workflows/test-task-table-view.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate table on public link
+        run: |
+          set -euo pipefail
+          URL='https://htmlpreview.github.io/?https://github.com/eplautomacaointeligente/motor-epl-qualy-max/blob/main/task-app/index.html'
+          google-chrome --headless --no-sandbox --disable-gpu --virtual-time-budget=20000 --dump-dom "$URL" > /tmp/dom.html
+          grep -q 'task-table' /tmp/dom.html
+          grep -q 'Categoria' /tmp/dom.html
+          grep -q 'Nome' /tmp/dom.html
+          grep -q 'Solicitante' /tmp/dom.html
+          grep -q 'Responsáveis' /tmp/dom.html
+          grep -q 'Prazo' /tmp/dom.html
+          grep -q 'Status' /tmp/dom.html
+          grep -q 'Ações' /tmp/dom.html
+          grep -q 'Obs.' /tmp/dom.html
+          grep -q 'Sincronizado' /tmp/dom.html
+          if grep -qi 'vercel authentication\|sign in to github' /tmp/dom.html; then exit 1; fi
+          echo 'TABLE_VIEW_OK'
