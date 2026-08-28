@@ -1,0 +1,28 @@
+name: Test task date range
+
+on:
+  push:
+    paths:
+      - '.github/workflows/test-task-date-range.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate date filters on public link
+        run: |
+          set -euo pipefail
+          grep -q 'id="historyDateFrom"' task-app/index.html
+          grep -q 'id="historyDateTo"' task-app/index.html
+          grep -q 'function historyBounds' task-app/index.html
+          grep -q 'function localDateStart' task-app/index.html
+          URL='https://htmlpreview.github.io/?https://github.com/eplautomacaointeligente/motor-epl-qualy-max/blob/main/task-app/index.html'
+          google-chrome --headless --no-sandbox --disable-gpu --virtual-time-budget=20000 --dump-dom "$URL" > /tmp/dom.html
+          grep -q 'Controle de Tarefas' /tmp/dom.html
+          grep -q 'Data inicial' /tmp/dom.html
+          grep -q 'Data final' /tmp/dom.html
+          grep -q 'Limpar datas' /tmp/dom.html
+          grep -q 'Sincronizado' /tmp/dom.html
+          if grep -qi 'vercel authentication\|sign in to github' /tmp/dom.html; then exit 1; fi
+          echo 'DATE_RANGE_OK'
