@@ -122,6 +122,35 @@ window.deleteTask=async id=>{if(!confirm('Excluir esta tarefa e todas as ações
 window.newAction=id=>{$('actionForm').reset();$('actionTaskId').value=id;$('actionDialog').showModal()};
 window.toggleAction=async(id,v)=>{try{await rest('/mini_actions?id=eq.'+encodeURIComponent(id),{method:'PATCH',headers:{'Prefer':'return=minimal'},body:JSON.stringify({concluida:v,updated_at:new Date().toISOString()})});await load()}catch(x){toast(x.message,true)}};
 window.deleteAction=async id=>{if(!confirm('Excluir esta ação?'))return;try{await rest('/mini_actions?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:{'Prefer':'return=minimal'}});await load()}catch(x){toast(x.message,true)}};
+const AUTO_SYNC_INTERVAL_MS=5000;
+let autoSyncBusy=false;
+function normalizeTasks(data){
+  return (data||[]).map(t=>({...t,miniAcoes:(t.mini_actions||[]).sort((a,b)=>(a.created_at||'').localeCompare(b.created_at||''))}));
+}
+function syncSignature(list){
+  return JSON.stringify((list||[]).map(t=>[t.id,t.updated_at,(t.miniAcoes||[]).map(a=>[a.id,a.updated_at,a.concluida])]));
+}
+async function autoSync(){
+  if(autoSyncBusy||document.hidden||$('taskDialog').open||$('actionDialog').open)return;
+  autoSyncBusy=true;
+  try{
+    const data=await rest('/tasks?select=*,mini_actions(*)&order=prazo.asc.nullslast,created_at.desc');
+    const next=normalizeTasks(data);
+    const changed=syncSignature(next)!==syncSignature(tasks);
+    if(changed){
+      tasks=next;
+      render();
+      toast('Atualização recebida de outro dispositivo');
+    }
+    $('sync').textContent='Sincronizado automaticamente • '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  }catch(e){
+    $('sync').textContent=navigator.onLine?'Falha na sincronização':'Sem conexão';
+  }finally{autoSyncBusy=false}
+}
+setInterval(autoSync,AUTO_SYNC_INTERVAL_MS);
+window.addEventListener('focus',autoSync);
+window.addEventListener('online',autoSync);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)autoSync()});
 init();load();
 </script>
 </body></html>
