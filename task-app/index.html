@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<title>Controle de Tarefas</title>
+<style>
+:root{--bg:#0f1117;--surface:#1a1d27;--surface2:#22263a;--border:#2e3347;--accent:#6366f1;--text:#e8eaf0;--muted:#8a93b2;--danger:#f43f5e;--success:#22c55e;--warn:#f59e0b;--info:#38bdf8}
+*{box-sizing:border-box} body{margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+header{position:sticky;top:0;z-index:20;background:rgba(26,29,39,.97);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px}
+.brand strong{display:block;font-size:15px} .brand small{color:var(--muted);font-size:10px}
+main{max-width:1080px;margin:auto;padding:14px}
+button,input,select,textarea{font:inherit} button{cursor:pointer}
+.btn{border:0;border-radius:10px;padding:9px 12px;font-size:12px;font-weight:700} .primary{background:var(--accent);color:#fff} .ghost{background:transparent;color:var(--text);border:1px solid var(--border)} .danger{background:#f43f5e18;color:#fb7185;border:1px solid #f43f5e33} .success{background:#22c55e18;color:#4ade80;border:1px solid #22c55e33}
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;margin-bottom:12px} .stat,.panel,.task{background:var(--surface);border:1px solid var(--border);border-radius:12px} .stat{padding:12px} .stat span{display:block;color:var(--muted);font-size:9px;text-transform:uppercase} .stat b{font-size:24px}
+.filters{padding:10px;display:grid;grid-template-columns:1fr 180px 210px;gap:8px;margin-bottom:11px}
+input,select,textarea{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:10px;outline:none} input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+.task{margin:9px 0;overflow:hidden} .task-main{padding:14px} .badges{display:flex;gap:6px;flex-wrap:wrap} .badge{font-size:10px;padding:3px 8px;border-radius:99px;background:#6366f119;color:#c7d2fe} .task h3{margin:8px 0 3px;font-size:15px} .muted{color:var(--muted);font-size:11px}
+.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin:12px 0} .meta div{background:var(--surface2);border-radius:8px;padding:8px} .meta b{display:block;color:var(--muted);font-size:9px;text-transform:uppercase;margin-bottom:3px} .meta span{font-size:12px}
+.obs{background:#12151e;border-radius:8px;padding:9px;font-size:12px;color:#c4c8d6;margin-bottom:10px;white-space:pre-wrap} .actions{display:flex;gap:7px;flex-wrap:wrap}
+.subtasks{background:#141722;border-top:1px solid var(--border);padding:12px 14px} .sub-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:7px} .subrow{display:grid;grid-template-columns:1fr 105px 145px auto;gap:7px;align-items:center;padding:8px 0;border-top:1px solid #252a3b} .subrow.done{opacity:.55} .subrow.done .desc{text-decoration:line-through}
+.empty{padding:36px;text-align:center;color:var(--muted)}
+dialog{width:min(560px,calc(100% - 20px));max-height:92vh;overflow:auto;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:14px} dialog::backdrop{background:#0009}
+form{display:grid;grid-template-columns:1fr 1fr;gap:11px} form h2,form .wide,form .form-actions{grid-column:1/-1} label{font-size:10px;color:var(--muted)} label input,label select,label textarea{margin-top:4px} .form-actions{display:flex;justify-content:flex-end;gap:7px;margin-top:5px}
+#toast{position:fixed;right:14px;bottom:14px;z-index:50;background:#202538;border:1px solid var(--success);border-radius:9px;padding:10px 12px;font-size:12px;opacity:0;transform:translateY(8px);transition:.2s;pointer-events:none} #toast.show{opacity:1;transform:none} #toast.err{border-color:var(--danger);color:#fda4af}
+@media(max-width:720px){main{padding:10px} .stats{grid-template-columns:repeat(2,1fr)} .stats .stat:first-child{grid-column:1/-1} .filters{grid-template-columns:1fr} .meta{grid-template-columns:1fr 1fr} .subrow{grid-template-columns:1fr auto} .subrow .sm-hide{display:none} form{grid-template-columns:1fr} form h2,form .wide,form .form-actions{grid-column:auto}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><strong>✓ Controle de Tarefas</strong><small id="sync">Conectando ao banco...</small></div>
+  <button class="btn primary" id="newBtn">+ Nova tarefa</button>
+</header>
+<main>
+  <section id="stats" class="stats"></section>
+  <section class="filters panel">
+    <input id="search" type="search" placeholder="Buscar tarefa, responsável, solicitante...">
+    <select id="filterStatus"><option value="">Todos os status</option><option>Pendente</option><option>Em andamento</option><option>Concluído</option><option>Cancelado</option></select>
+    <select id="filterCat"></select>
+  </section>
+  <section id="list"></section>
+</main>
+
+<dialog id="taskDialog">
+<form id="taskForm">
+  <h2 id="taskTitle">Nova tarefa</h2>
+  <input id="taskId" type="hidden">
+  <label>Categoria *<select id="categoria" required></select></label>
+  <label>Status *<select id="status" required><option>Pendente</option><option>Em andamento</option><option>Concluído</option><option>Cancelado</option></select></label>
+  <label class="wide">Nome da tarefa *<input id="nome" required></label>
+  <label>Solicitante *<input id="solicitante" required></label>
+  <label>Responsáveis *<input id="responsaveis" required></label>
+  <label>Prazo<input id="prazo" type="date"></label>
+  <label class="wide">Observações<textarea id="obs" rows="3"></textarea></label>
+  <div class="form-actions"><button type="button" class="btn ghost" id="cancelTask">Cancelar</button><button type="submit" class="btn primary">Salvar</button></div>
+</form>
+</dialog>
+
+<dialog id="actionDialog">
+<form id="actionForm">
+  <h2>Nova ação</h2>
+  <input id="actionTaskId" type="hidden">
+  <label class="wide">Descrição *<input id="actionDesc" required></label>
+  <label>Prazo<input id="actionPrazo" type="date"></label>
+  <label>Responsável<input id="actionResp"></label>
+  <div class="form-actions"><button type="button" class="btn ghost" id="cancelAction">Cancelar</button><button type="submit" class="btn primary">Adicionar</button></div>
+</form>
+</dialog>
+<div id="toast"></div>
+<script>
+const API="https://ep-autumn-heart-aepwnqo2.apirest.c-2.us-east-2.aws.neon.tech/neondb/rest/v1";
+const TOKEN="eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRhc2stYXBwLWtleS0xIn0.eyJzdWIiOiJzaGFyZWQtdGFzay1hcHAiLCJyb2xlIjoiYXV0aGVudGljYXRlZCIsImlhdCI6MTc4NzkyMzk2OSwiZXhwIjoxOTQ1NjA0MDI5fQ.N02ax4cz8ZpndqICfTALm4qb-7vUe3UzwzggNTW9vMFehvoCjz_58s6Jsc-GzXc2n9qyv-7HVKpbVq6IYXvXjYr8Hf_Rs06gbzzNy70_yKbTxm8Aifg2MvGIMqYo2d0l_RCyoAO1vZ4pT1Ur-sEBSWnRfVO0QZaCQqhWrXW-kKWlDb3_03BkyYQHt2V-0-gSJjCNhq5vZcV8nUcIIdTI7zPuX5VYC6x_I82k7dIyrO2a8Zk0D6HdGSbvIqnnyuT52I3GibYrGLaE7vMLUAHIlZqahXy9PHBZhVtm9GJ7M7bIzG7gs_xIQjwvyhS48F9D7PIr-zukzPSoGG9ysKkjIg";
+const CATS=['Documento','Questionário','Auditoria','Não Conformidade','Plano de Ação','Plano de Mudança','Lançamento de Despesa','Treinamento'];
+let tasks=[], expanded=new Set();
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const headers=(extra={})=>({'Authorization':'Bearer '+TOKEN,'Content-Type':'application/json',...extra});
+async function rest(path,opts={}){
+  const r=await fetch(API+path,{...opts,headers:headers(opts.headers||{})});
+  if(!r.ok){let m='Erro ao acessar o banco';try{const j=await r.json();m=j.message||j.error||m}catch{}throw new Error(m)}
+  if(r.status===204)return null; const txt=await r.text(); return txt?JSON.parse(txt):null;
+}
+function init(){
+  $('categoria').innerHTML='<option value="">Selecione...</option>'+CATS.map(x=>`<option>${esc(x)}</option>`).join('');
+  $('filterCat').innerHTML='<option value="">Todas as categorias</option>'+CATS.map(x=>`<option>${esc(x)}</option>`).join('');
+}
+async function load(){
+  $('sync').textContent='Sincronizando...';
+  try{
+    const data=await rest('/tasks?select=*,mini_actions(*)&order=prazo.asc.nullslast,created_at.desc');
+    tasks=(data||[]).map(t=>({...t,miniAcoes:(t.mini_actions||[]).sort((a,b)=>(a.created_at||'').localeCompare(b.created_at||''))}));
+    $('sync').textContent='Sincronizado • '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    render();
+  }catch(e){$('sync').textContent='Falha na sincronização';toast(e.message,true)}
+}
+function render(){
+  const today=new Date().toISOString().slice(0,10);
+  const s={total:tasks.length,p:tasks.filter(t=>t.status==='Pendente').length,a:tasks.filter(t=>t.status==='Em andamento').length,c:tasks.filter(t=>t.status==='Concluído').length,l:tasks.filter(t=>t.prazo&&t.prazo<today&&!['Concluído','Cancelado'].includes(t.status)).length};
+  $('stats').innerHTML=[['Total',s.total],['Pendentes',s.p],['Em andamento',s.a],['Concluídas',s.c],['Atrasadas',s.l]].map(x=>`<div class="stat"><span>${x[0]}</span><b>${x[1]}</b></div>`).join('');
+  const q=$('search').value.toLowerCase(),fs=$('filterStatus').value,fc=$('filterCat').value;
+  const data=tasks.filter(t=>(!q||[t.nome,t.solicitante,t.responsaveis,t.categoria,t.obs].join(' ').toLowerCase().includes(q))&&(!fs||t.status===fs)&&(!fc||t.categoria===fc));
+  $('list').innerHTML=data.length?data.map(card).join(''):'<div class="panel empty">Nenhuma tarefa encontrada.</div>';
+}
+function card(t){
+  const done=t.miniAcoes.filter(a=>Number(a.concluida)===1).length;
+  return `<article class="task"><div class="task-main"><div class="badges"><span class="badge">${esc(t.categoria)}</span><span class="badge">${esc(t.status)}</span></div><h3>${esc(t.nome)}</h3><div class="muted">${done}/${t.miniAcoes.length} ações concluídas</div><div class="meta"><div><b>Solicitante</b><span>${esc(t.solicitante)}</span></div><div><b>Responsáveis</b><span>${esc(t.responsaveis)}</span></div><div><b>Prazo</b><span>${fmt(t.prazo)}</span></div><div><b>Ações</b><span>${done}/${t.miniAcoes.length}</span></div></div>${t.obs?`<div class="obs">${esc(t.obs)}</div>`:''}<div class="actions"><button class="btn ghost" onclick="toggleTask('${t.id}')">${expanded.has(t.id)?'Ocultar ações':'Ver ações'}</button><button class="btn ghost" onclick="editTask('${t.id}')">Editar</button><button class="btn danger" onclick="deleteTask('${t.id}')">Excluir</button></div></div>${expanded.has(t.id)?subs(t):''}</article>`;
+}
+function subs(t){
+  return `<div class="subtasks"><div class="sub-head"><strong>Mini ações</strong><button class="btn primary" onclick="newAction('${t.id}')">+ Nova ação</button></div>${t.miniAcoes.length?t.miniAcoes.map(a=>`<div class="subrow ${Number(a.concluida)===1?'done':''}"><span class="desc">${esc(a.descricao)}</span><span class="sm-hide muted">${fmt(a.prazo)}</span><span class="sm-hide muted">${esc(a.responsavel||'—')}</span><span><button class="btn ${Number(a.concluida)===1?'ghost':'success'}" onclick="toggleAction('${a.id}',${Number(a.concluida)===1?0:1})">${Number(a.concluida)===1?'Reabrir':'Concluir'}</button> <button class="btn danger" onclick="deleteAction('${a.id}')">×</button></span></div>`).join(''):'<div class="muted">Nenhuma ação cadastrada.</div>'}</div>`;
+}
+function fmt(s){if(!s)return'—';const[y,m,d]=s.split('-');return `${d}/${m}/${y}`}
+function toast(msg,err=false){const e=$('toast');e.textContent=msg;e.className=err?'show err':'show';clearTimeout(toast.t);toast.t=setTimeout(()=>e.className='',2500)}
+$('newBtn').onclick=()=>{$('taskForm').reset();$('taskId').value='';$('status').value='Pendente';$('taskTitle').textContent='Nova tarefa';$('taskDialog').showModal()};
+$('cancelTask').onclick=()=>$('taskDialog').close(); $('cancelAction').onclick=()=>$('actionDialog').close();
+$('taskForm').onsubmit=async e=>{e.preventDefault();const id=$('taskId').value,now=new Date().toISOString(),obj={categoria:$('categoria').value,nome:$('nome').value.trim(),solicitante:$('solicitante').value.trim(),responsaveis:$('responsaveis').value.trim(),prazo:$('prazo').value,status:$('status').value,obs:$('obs').value.trim(),updated_at:now};try{if(id)await rest('/tasks?id=eq.'+encodeURIComponent(id),{method:'PATCH',headers:{'Prefer':'return=minimal'},body:JSON.stringify(obj)});else await rest('/tasks',{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify({id:crypto.randomUUID(),...obj,created_at:now})});$('taskDialog').close();toast(id?'Tarefa atualizada':'Tarefa criada');await load()}catch(x){toast(x.message,true)}};
+$('actionForm').onsubmit=async e=>{e.preventDefault();const taskId=$('actionTaskId').value,now=new Date().toISOString();try{await rest('/mini_actions',{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify({id:crypto.randomUUID(),task_id:taskId,descricao:$('actionDesc').value.trim(),prazo:$('actionPrazo').value,responsavel:$('actionResp').value.trim(),concluida:0,created_at:now,updated_at:now})});$('actionDialog').close();expanded.add(taskId);toast('Ação adicionada');await load()}catch(x){toast(x.message,true)}};
+for(const id of['search','filterStatus','filterCat'])$(id).addEventListener(id==='search'?'input':'change',render);
+window.toggleTask=id=>{expanded.has(id)?expanded.delete(id):expanded.add(id);render()};
+window.editTask=id=>{const t=tasks.find(x=>x.id===id);if(!t)return;$('taskId').value=t.id;$('categoria').value=t.categoria;$('nome').value=t.nome;$('solicitante').value=t.solicitante;$('responsaveis').value=t.responsaveis;$('prazo').value=t.prazo||'';$('status').value=t.status;$('obs').value=t.obs||'';$('taskTitle').textContent='Editar tarefa';$('taskDialog').showModal()};
+window.deleteTask=async id=>{if(!confirm('Excluir esta tarefa e todas as ações?'))return;try{await rest('/tasks?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:{'Prefer':'return=minimal'}});toast('Tarefa excluída');await load()}catch(x){toast(x.message,true)}};
+window.newAction=id=>{$('actionForm').reset();$('actionTaskId').value=id;$('actionDialog').showModal()};
+window.toggleAction=async(id,v)=>{try{await rest('/mini_actions?id=eq.'+encodeURIComponent(id),{method:'PATCH',headers:{'Prefer':'return=minimal'},body:JSON.stringify({concluida:v,updated_at:new Date().toISOString()})});await load()}catch(x){toast(x.message,true)}};
+window.deleteAction=async id=>{if(!confirm('Excluir esta ação?'))return;try{await rest('/mini_actions?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:{'Prefer':'return=minimal'}});await load()}catch(x){toast(x.message,true)}};
+init();load();
+</script>
+</body></html>
