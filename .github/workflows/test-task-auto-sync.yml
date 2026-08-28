@@ -1,0 +1,39 @@
+name: Test task auto sync
+
+on:
+  push:
+    paths:
+      - '.github/workflows/test-task-auto-sync.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test automatic sync on the unchanged public link
+        shell: bash
+        run: |
+          set -euo pipefail
+          API='https://ep-autumn-heart-aepwnqo2.apirest.c-2.us-east-2.aws.neon.tech/neondb/rest/v1'
+          TOKEN='eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRhc2stYXBwLWtleS0xIn0.eyJzdWIiOiJzaGFyZWQtdGFzay1hcHAiLCJyb2xlIjoiYXV0aGVudGljYXRlZCIsImlhdCI6MTc4NzkyMzk2OSwiZXhwIjoxOTQ1NjA0MDI5fQ.N02ax4cz8ZpndqICfTALm4qb-7vUe3UzwzggNTW9vMFehvoCjz_58s6Jsc-GzXc2n9qyv-7HVKpbVq6IYXvXjYr8Hf_Rs06gbzzNy70_yKbTxm8Aifg2MvGIMqYo2d0l_RCyoAO1vZ4pT1Ur-sEBSWnRfVO0QZaCQqhWrXW-kKWlDb3_03BkyYQHt2V-0-gSJjCNhq5vZcV8nUcIIdTI7zPuX5VYC6x_I82k7dIyrO2a8Zk0D6HdGSbvIqnnyuT52I3GibYrGLaE7vMLUAHIlZqahXy9PHBZhVtm9GJ7M7bIzG7gs_xIQjwvyhS48F9D7PIr-zukzPSoGG9ysKkjIg'
+          URL='https://htmlpreview.github.io/?https://github.com/eplautomacaointeligente/motor-epl-qualy-max/blob/main/task-app/index.html'
+          ID="auto-sync-$(date +%s)-$RANDOM"
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
+          cleanup(){ curl -sS -X DELETE "$API/tasks?id=eq.$ID" -H "Authorization: Bearer $TOKEN" -H 'Prefer: return=minimal' >/dev/null || true; }
+          trap cleanup EXIT
+          curl -fsS -X POST "$API/tasks" \
+            -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -H 'Prefer: return=minimal' \
+            --data "{\"id\":\"$ID\",\"categoria\":\"Documento\",\"nome\":\"SYNC_INICIAL_$ID\",\"solicitante\":\"Teste\",\"responsaveis\":\"Teste\",\"prazo\":\"\",\"status\":\"Pendente\",\"obs\":\"\",\"created_at\":\"$NOW\",\"updated_at\":\"$NOW\"}"
+          (
+            sleep 2
+            NOW2=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
+            curl -fsS -X PATCH "$API/tasks?id=eq.$ID" \
+              -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -H 'Prefer: return=minimal' \
+              --data "{\"nome\":\"SYNC_ATUALIZADO_$ID\",\"updated_at\":\"$NOW2\"}"
+          ) &
+          google-chrome --headless --no-sandbox --disable-gpu --virtual-time-budget=12000 --dump-dom "$URL" > /tmp/dom.html
+          grep -q "SYNC_ATUALIZADO_$ID" /tmp/dom.html
+          grep -q 'Sincronizado automaticamente' /tmp/dom.html
+          echo 'AUTO_SYNC_OK'
