@@ -11,37 +11,38 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      API: https://ep-autumn-heart-aepwnqo2.apirest.c-2.us-east-2.aws.neon.tech/neondb/rest/v1
+      TOKEN: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRhc2stYXBwLWtleS0xIn0.eyJzdWIiOiJzaGFyZWQtdGFzay1hcHAiLCJyb2xlIjoiYXV0aGVudGljYXRlZCIsImlhdCI6MTc4NzkyMzk2OSwiZXhwIjoxOTQ1NjA0MDI5fQ.N02ax4cz8ZpndqICfTALm4qb-7vUe3UzwzggNTW9vMFehvoCjz_58s6Jsc-GzXc2n9qyv-7HVKpbVq6IYXvXjYr8Hf_Rs06gbzzNy70_yKbTxm8Aifg2MvGIMqYo2d0l_RCyoAO1vZ4pT1Ur-sEBSWnRfVO0QZaCQqhWrXW-kKWlDb3_03BkyYQHt2V-0-gSJjCNhq5vZcV8nUcIIdTI7zPuX5VYC6x_I82k7dIyrO2a8Zk0D6HdGSbvIqnnyuT52I3GibYrGLaE7vMLUAHIlZqahXy9PHBZhVtm9GJ7M7bIzG7gs_xIQjwvyhS48F9D7PIr-zukzPSoGG9ysKkjIg
     steps:
-      - name: Test anonymous GET
+      - name: Test authenticated GET without user login
         run: |
           set -euo pipefail
-          API='https://ep-autumn-heart-aepwnqo2.apirest.c-2.us-east-2.aws.neon.tech/neondb/rest/v1'
-          code=$(curl -sS -o /tmp/get.json -w '%{http_code}' "$API/tasks?select=id,nome&limit=1")
+          code=$(curl -sS -o /tmp/get.json -w '%{http_code}' "$API/tasks?select=id,nome&limit=1" -H "Authorization: Bearer $TOKEN")
           cat /tmp/get.json
           test "$code" = "200"
       - name: Test CORS preflight
         run: |
           set -euo pipefail
-          API='https://ep-autumn-heart-aepwnqo2.apirest.c-2.us-east-2.aws.neon.tech/neondb/rest/v1'
           curl -sS -D /tmp/headers -o /dev/null -X OPTIONS "$API/tasks" \
             -H 'Origin: https://htmlpreview.github.io' \
             -H 'Access-Control-Request-Method: POST' \
-            -H 'Access-Control-Request-Headers: content-type,prefer'
+            -H 'Access-Control-Request-Headers: authorization,content-type,prefer'
           cat /tmp/headers
           grep -qi '^access-control-allow-origin:' /tmp/headers
-      - name: Test anonymous CRUD
+          grep -qi 'authorization' /tmp/headers
+      - name: Test CRUD without user login
         run: |
           set -euo pipefail
-          API='https://ep-autumn-heart-aepwnqo2.apirest.c-2.us-east-2.aws.neon.tech/neondb/rest/v1'
           ID="test-$(date +%s)-$RANDOM"
           NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           payload=$(printf '{"id":"%s","categoria":"Documento","nome":"Teste automático","solicitante":"Sistema","responsaveis":"Sistema","prazo":"","status":"Pendente","obs":"validação","created_at":"%s","updated_at":"%s"}' "$ID" "$NOW" "$NOW")
-          code=$(curl -sS -o /tmp/post.json -w '%{http_code}' -X POST "$API/tasks" -H 'Content-Type: application/json' -H 'Prefer: return=minimal' --data "$payload")
+          code=$(curl -sS -o /tmp/post.json -w '%{http_code}' -X POST "$API/tasks" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -H 'Prefer: return=minimal' --data "$payload")
           cat /tmp/post.json || true
           test "$code" = "201" -o "$code" = "204"
-          code=$(curl -sS -o /tmp/patch.json -w '%{http_code}' -X PATCH "$API/tasks?id=eq.$ID" -H 'Content-Type: application/json' -H 'Prefer: return=minimal' --data '{"status":"Em andamento"}')
+          code=$(curl -sS -o /tmp/patch.json -w '%{http_code}' -X PATCH "$API/tasks?id=eq.$ID" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -H 'Prefer: return=minimal' --data '{"status":"Em andamento"}')
           cat /tmp/patch.json || true
           test "$code" = "204" -o "$code" = "200"
-          code=$(curl -sS -o /tmp/del.json -w '%{http_code}' -X DELETE "$API/tasks?id=eq.$ID" -H 'Prefer: return=minimal')
+          code=$(curl -sS -o /tmp/del.json -w '%{http_code}' -X DELETE "$API/tasks?id=eq.$ID" -H "Authorization: Bearer $TOKEN" -H 'Prefer: return=minimal')
           cat /tmp/del.json || true
           test "$code" = "204" -o "$code" = "200"
