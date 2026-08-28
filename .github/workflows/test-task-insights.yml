@@ -1,0 +1,40 @@
+name: Test task insights
+
+on:
+  push:
+    paths:
+      - '.github/workflows/test-task-insights.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate public UI and history API
+        run: |
+          set -euo pipefail
+          python - <<'PY' > /tmp/token
+          import re
+          s=open('task-app/index.html',encoding='utf-8').read()
+          m=re.search(r'const TOKEN="([^"]+)"',s)
+          if not m: raise SystemExit('TOKEN not found')
+          print(m.group(1))
+          PY
+          TOKEN=$(cat /tmp/token)
+          API='https://ep-autumn-heart-aepwnqo2.apirest.c-2.us-east-2.aws.neon.tech/neondb/rest/v1'
+          TEST_ID="insight-test-${GITHUB_RUN_ID}"
+          curl -sS -f "$API/task_history?select=id&limit=1" -H "Authorization: Bearer $TOKEN" > /tmp/history-read.json
+          curl -sS -f -X POST "$API/task_history" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -H 'Prefer: return=minimal' -d "{\"task_id\":\"$TEST_ID\",\"demanda\":\"__EPL_INSIGHT_TEST__\",\"categoria\":\"Documento\",\"evento\":\"Demanda atualizada\",\"detalhes\":\"Teste automatizado\",\"responsavel\":\"CI\"}"
+          curl -sS -f "$API/task_history?select=demanda,evento&task_id=eq.$TEST_ID" -H "Authorization: Bearer $TOKEN" > /tmp/history-write.json
+          grep -q '__EPL_INSIGHT_TEST__' /tmp/history-write.json
+          URL='https://htmlpreview.github.io/?https://github.com/eplautomacaointeligente/motor-epl-qualy-max/blob/main/task-app/index.html'
+          google-chrome --headless --no-sandbox --disable-gpu --virtual-time-budget=20000 --dump-dom "$URL" > /tmp/dom.html
+          grep -q 'Controle de Tarefas' /tmp/dom.html
+          grep -q 'Produtividade concluída' /tmp/dom.html
+          grep -q 'Histórico do que foi feito' /tmp/dom.html
+          grep -q 'Desafios' /tmp/dom.html
+          grep -q 'Problemas' /tmp/dom.html
+          grep -q 'Soluções' /tmp/dom.html
+          grep -q 'Sincronizado' /tmp/dom.html
+          if grep -qi 'vercel authentication\|sign in to github' /tmp/dom.html; then exit 1; fi
+          echo "INSIGHTS_OK $TEST_ID"
