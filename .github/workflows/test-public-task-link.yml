@@ -1,0 +1,26 @@
+name: Test public task link
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'task-app/**'
+      - '.github/workflows/test-public-task-link.yml'
+  workflow_dispatch:
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Open public link without login
+        run: |
+          set -euo pipefail
+          URL='https://htmlpreview.github.io/?https://github.com/eplautomacaointeligente/motor-epl-qualy-max/blob/main/task-app/index.html'
+          google-chrome --headless --no-sandbox --disable-gpu --virtual-time-budget=15000 --dump-dom "$URL" > /tmp/dom.html
+          grep -q 'Controle de Tarefas' /tmp/dom.html
+          grep -q 'Sincronizado' /tmp/dom.html
+          if grep -qi 'sign in\|login.*github\|vercel authentication' /tmp/dom.html; then
+            echo 'Unexpected authentication page'
+            exit 1
+          fi
+          echo 'PUBLIC_LINK_OK'
