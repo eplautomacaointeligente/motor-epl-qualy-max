@@ -1,0 +1,132 @@
+name: Enable task productivity and history
+
+on:
+  push:
+    paths:
+      - '.github/workflows/enable-task-insights.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Add productivity, history and lessons
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('task-app/index.html')
+          s = p.read_text(encoding='utf-8')
+          marker = 'TASK_INSIGHTS_V1'
+          if marker in s:
+              print('Insights already enabled')
+              raise SystemExit(0)
+          addon = r'''
+          <!-- TASK_INSIGHTS_V1 -->
+          <style>
+          .insight-title{display:flex;align-items:end;justify-content:space-between;gap:10px;margin:16px 0 8px}.insight-title h2{font-size:14px;margin:0}.insight-title p{font-size:10px;color:var(--muted);margin:2px 0 0}.productivity{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.metric{background:linear-gradient(180deg,#1b1f2c,#181b26);border:1px solid var(--border);border-radius:12px;padding:14px}.metric span{color:var(--muted);font-size:10px;text-transform:uppercase}.metric b{display:block;font-size:28px;margin-top:2px}.metric small{color:var(--muted)}.metric-filter{display:flex;gap:8px;align-items:center}.metric-filter select{width:auto;min-width:190px}.history-filters{padding:10px;display:grid;grid-template-columns:1fr 150px 180px 180px;gap:8px;margin-bottom:10px}.history-list{display:grid;gap:8px}.history-item{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:11px 12px;display:grid;grid-template-columns:150px 1fr 140px;gap:10px;align-items:start}.history-item .when{font-size:11px;color:var(--muted)}.history-item strong{font-size:12px}.history-item .details{font-size:10px;color:var(--muted);margin-top:3px}.history-item .who{text-align:right;font-size:10px;color:var(--muted)}.lesson-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:10px 0}.lesson{background:#12151e;border-radius:8px;padding:9px;font-size:12px;color:#c4c8d6;white-space:pre-wrap}.lesson b{display:block;color:var(--muted);font-size:9px;text-transform:uppercase;margin-bottom:5px}.field-note{grid-column:1/-1;background:#11141c;border:1px solid var(--border);border-radius:10px;padding:10px}.field-note strong{font-size:11px}.field-note p{font-size:10px;color:var(--muted);margin:3px 0 0}@media(max-width:720px){.productivity{grid-template-columns:1fr}.metric-filter{width:100%}.metric-filter select{width:100%;min-width:0}.insight-title{align-items:stretch;flex-direction:column}.history-filters{grid-template-columns:1fr}.history-item{grid-template-columns:1fr}.history-item .who{text-align:left}.lesson-grid{grid-template-columns:1fr}.field-note{grid-column:auto}}
+          </style>
+          <script>
+          (()=>{
+            let taskHistory=[];
+            const metricSection=document.createElement('section');
+            metricSection.innerHTML=`<div class="insight-title"><div><h2>Produtividade concluída</h2><p>Quantidade de demandas finalizadas no período</p></div><div class="metric-filter"><select id="metricCat"></select></div></div><div class="productivity"><div class="metric"><span>Hoje</span><b id="doneToday">0</b><small>demandas concluídas</small></div><div class="metric"><span>Esta semana</span><b id="doneWeek">0</b><small>demandas concluídas</small></div><div class="metric"><span>Este mês</span><b id="doneMonth">0</b><small>demandas concluídas</small></div></div>`;
+            $('stats').after(metricSection);
+
+            const historySection=document.createElement('section');
+            historySection.innerHTML=`<div class="insight-title"><div><h2>Histórico do que foi feito</h2><p>Registro das movimentações, ações e demandas</p></div></div><div class="history-filters panel"><input id="historySearch" type="search" placeholder="Buscar demanda, evento ou responsável..."><select id="historyPeriod"><option value="today">Hoje</option><option value="week">Esta semana</option><option value="month" selected>Este mês</option><option value="all">Todo o histórico</option></select><select id="historyEvent"><option value="">Todos os eventos</option><option>Demanda criada</option><option>Demanda atualizada</option><option>Demanda concluída</option><option>Status alterado</option><option>Demanda excluída</option><option>Ação criada</option><option>Ação concluída</option><option>Ação reaberta</option><option>Ação excluída</option></select><select id="historyCat"></select></div><div id="historyList" class="history-list"></div>`;
+            $('list').after(historySection);
+
+            const formActions=$('taskForm').querySelector('.form-actions');
+            const lessons=document.createElement('div');
+            lessons.className='wide';
+            lessons.innerHTML=`<div class="field-note"><strong>Registro de aprendizado da demanda</strong><p>Documente o contexto para facilitar consultas futuras.</p></div><label class="wide">Desafios<textarea id="desafios" rows="2" placeholder="O que tornou esta demanda mais difícil?"></textarea></label><label class="wide">Problemas<textarea id="problemas" rows="2" placeholder="Quais problemas ocorreram?"></textarea></label><label class="wide">Soluções<textarea id="solucoes" rows="2" placeholder="Como foi resolvido ou qual solução foi aplicada?"></textarea></label>`;
+            formActions.before(lessons);
+
+            const catOptions=CATS.map(x=>`<option>${esc(x)}</option>`).join('');
+            $('metricCat').innerHTML='<option value="">Todas as categorias</option>'+catOptions;
+            $('historyCat').innerHTML='<option value="">Todas as categorias</option>'+catOptions;
+
+            function parseInsightDate(v){if(!v)return null;const d=new Date(v);return Number.isNaN(d.getTime())?null:d}
+            function insightToday(){const d=new Date();d.setHours(0,0,0,0);return d}
+            function insightWeek(){const d=insightToday(),day=(d.getDay()+6)%7;d.setDate(d.getDate()-day);return d}
+            function insightMonth(){const d=insightToday();d.setDate(1);return d}
+            function insightDateTime(v){const d=parseInsightDate(v);return d?d.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—'}
+
+            function renderProductivity(){
+              const fc=$('metricCat').value;
+              const completed=tasks.filter(t=>t.status==='Concluído'&&t.concluido_at&&(!fc||t.categoria===fc));
+              const countFrom=start=>completed.filter(t=>{const d=parseInsightDate(t.concluido_at);return d&&d>=start}).length;
+              $('doneToday').textContent=countFrom(insightToday());
+              $('doneWeek').textContent=countFrom(insightWeek());
+              $('doneMonth').textContent=countFrom(insightMonth());
+            }
+
+            function historyStart(period){if(period==='today')return insightToday();if(period==='week')return insightWeek();if(period==='month')return insightMonth();return null}
+            function renderTaskHistory(){
+              const q=$('historySearch').value.toLowerCase(),period=$('historyPeriod').value,event=$('historyEvent').value,cat=$('historyCat').value,start=historyStart(period);
+              const data=taskHistory.filter(h=>{const d=parseInsightDate(h.occurred_at);return(!start||d&&d>=start)&&(!event||h.evento===event)&&(!cat||h.categoria===cat)&&(!q||[h.demanda,h.evento,h.detalhes,h.responsavel,h.categoria].join(' ').toLowerCase().includes(q))});
+              $('historyList').innerHTML=data.length?data.map(h=>`<article class="history-item"><div class="when">${insightDateTime(h.occurred_at)}</div><div><div class="badges"><span class="badge">${esc(h.categoria||'Sem categoria')}</span><span class="badge">${esc(h.evento)}</span></div><strong>${esc(h.demanda||'Demanda removida')}</strong><div class="details">${esc(h.detalhes||'')}</div></div><div class="who">${h.responsavel?'Responsável: '+esc(h.responsavel):''}</div></article>`).join(''):'<div class="panel empty">Nenhum registro encontrado neste período.</div>';
+            }
+
+            async function loadTaskHistory(silent=true){
+              try{taskHistory=await rest('/task_history?select=*&order=occurred_at.desc&limit=500')||[];renderTaskHistory()}catch(e){if(!silent)toast(e.message,true)}
+            }
+            async function writeTaskHistory({task_id,demanda,categoria,evento,detalhes='',responsavel=''}){
+              await rest('/task_history',{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify({task_id,demanda,categoria,evento,detalhes,responsavel})});
+            }
+
+            const originalRender=render;
+            render=function(){
+              const today=new Date().toISOString().slice(0,10);
+              const s={total:tasks.length,p:tasks.filter(t=>t.status==='Pendente').length,a:tasks.filter(t=>t.status==='Em andamento').length,c:tasks.filter(t=>t.status==='Concluído').length,l:tasks.filter(t=>t.prazo&&t.prazo<today&&!['Concluído','Cancelado'].includes(t.status)).length};
+              $('stats').innerHTML=[['Total',s.total],['Pendentes',s.p],['Em andamento',s.a],['Concluídas',s.c],['Atrasadas',s.l]].map(x=>`<div class="stat"><span>${x[0]}</span><b>${x[1]}</b></div>`).join('');
+              const q=$('search').value.toLowerCase(),fs=$('filterStatus').value,fc=$('filterCat').value;
+              const data=tasks.filter(t=>(!q||[t.nome,t.solicitante,t.responsaveis,t.categoria,t.obs,t.desafios,t.problemas,t.solucoes].join(' ').toLowerCase().includes(q))&&(!fs||t.status===fs)&&(!fc||t.categoria===fc));
+              $('list').innerHTML=data.length?data.map(card).join(''):'<div class="panel empty">Nenhuma tarefa encontrada.</div>';
+              renderProductivity();renderTaskHistory();
+            };
+
+            card=function(t){
+              const done=t.miniAcoes.filter(a=>Number(a.concluida)===1).length;
+              const lessons=[t.desafios?`<div class="lesson"><b>Desafios</b>${esc(t.desafios)}</div>`:'',t.problemas?`<div class="lesson"><b>Problemas</b>${esc(t.problemas)}</div>`:'',t.solucoes?`<div class="lesson"><b>Soluções</b>${esc(t.solucoes)}</div>`:''].filter(Boolean).join('');
+              return `<article class="task"><div class="task-main"><div class="badges"><span class="badge">${esc(t.categoria)}</span><span class="badge">${esc(t.status)}</span></div><h3>${esc(t.nome)}</h3><div class="muted">${done}/${t.miniAcoes.length} ações concluídas${t.concluido_at?' • concluída em '+insightDateTime(t.concluido_at):''}</div><div class="meta"><div><b>Solicitante</b><span>${esc(t.solicitante)}</span></div><div><b>Responsáveis</b><span>${esc(t.responsaveis)}</span></div><div><b>Prazo</b><span>${fmt(t.prazo)}</span></div><div><b>Ações</b><span>${done}/${t.miniAcoes.length}</span></div></div>${t.obs?`<div class="obs">${esc(t.obs)}</div>`:''}${lessons?`<div class="lesson-grid">${lessons}</div>`:''}<div class="actions"><button class="btn ghost" onclick="toggleTask('${t.id}')">${expanded.has(t.id)?'Ocultar ações':'Ver ações'}</button><button class="btn ghost" onclick="editTask('${t.id}')">Editar</button><button class="btn danger" onclick="deleteTask('${t.id}')">Excluir</button></div></div>${expanded.has(t.id)?subs(t):''}</article>`;
+            };
+
+            window.editTask=id=>{const t=tasks.find(x=>x.id===id);if(!t)return;$('taskId').value=t.id;$('categoria').value=t.categoria;$('nome').value=t.nome;$('solicitante').value=t.solicitante;$('responsaveis').value=t.responsaveis;$('prazo').value=t.prazo||'';$('status').value=t.status;$('obs').value=t.obs||'';$('desafios').value=t.desafios||'';$('problemas').value=t.problemas||'';$('solucoes').value=t.solucoes||'';$('taskTitle').textContent='Editar tarefa';$('taskDialog').showModal()};
+
+            $('taskForm').onsubmit=async e=>{
+              e.preventDefault();const id=$('taskId').value,previous=id?tasks.find(x=>x.id===id):null,now=new Date().toISOString(),status=$('status').value;let concluido_at=previous?.concluido_at||null;if(status==='Concluído'&&previous?.status!=='Concluído')concluido_at=now;if(status!=='Concluído')concluido_at=null;
+              const obj={categoria:$('categoria').value,nome:$('nome').value.trim(),solicitante:$('solicitante').value.trim(),responsaveis:$('responsaveis').value.trim(),prazo:$('prazo').value,status,obs:$('obs').value.trim(),desafios:$('desafios').value.trim(),problemas:$('problemas').value.trim(),solucoes:$('solucoes').value.trim(),concluido_at,updated_at:now};
+              try{if(id){await rest('/tasks?id=eq.'+encodeURIComponent(id),{method:'PATCH',headers:{'Prefer':'return=minimal'},body:JSON.stringify(obj)});let evento='Demanda atualizada',detalhes='Dados da demanda foram atualizados';if(previous.status!==status){evento=status==='Concluído'?'Demanda concluída':'Status alterado';detalhes=`${previous.status} → ${status}`}else if(previous.desafios!==obj.desafios||previous.problemas!==obj.problemas||previous.solucoes!==obj.solucoes){detalhes='Desafios, problemas ou soluções foram atualizados'}await writeTaskHistory({task_id:id,demanda:obj.nome,categoria:obj.categoria,evento,detalhes,responsavel:obj.responsaveis});toast(evento)}else{const newId=crypto.randomUUID();await rest('/tasks',{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify({id:newId,...obj,created_at:now})});await writeTaskHistory({task_id:newId,demanda:obj.nome,categoria:obj.categoria,evento:'Demanda criada',detalhes:`Status inicial: ${status}`,responsavel:obj.responsaveis});if(status==='Concluído')await writeTaskHistory({task_id:newId,demanda:obj.nome,categoria:obj.categoria,evento:'Demanda concluída',detalhes:'Criada já como concluída',responsavel:obj.responsaveis});toast('Demanda criada')}$('taskDialog').close();await load();await loadTaskHistory()}catch(x){toast(x.message,true)}};
+
+            $('actionForm').onsubmit=async e=>{e.preventDefault();const taskId=$('actionTaskId').value,task=tasks.find(t=>t.id===taskId),now=new Date().toISOString(),desc=$('actionDesc').value.trim(),resp=$('actionResp').value.trim();try{await rest('/mini_actions',{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify({id:crypto.randomUUID(),task_id:taskId,descricao:desc,prazo:$('actionPrazo').value,responsavel:resp,concluida:0,created_at:now,updated_at:now})});await writeTaskHistory({task_id:taskId,demanda:task?.nome||'',categoria:task?.categoria||'',evento:'Ação criada',detalhes:desc,responsavel:resp||task?.responsaveis||''});$('actionDialog').close();expanded.add(taskId);toast('Ação adicionada');await load();await loadTaskHistory()}catch(x){toast(x.message,true)}};
+
+            window.deleteTask=async id=>{if(!confirm('Excluir esta tarefa e todas as ações?'))return;const t=tasks.find(x=>x.id===id);try{await writeTaskHistory({task_id:id,demanda:t?.nome||'',categoria:t?.categoria||'',evento:'Demanda excluída',detalhes:'A demanda e suas ações foram excluídas',responsavel:t?.responsaveis||''});await rest('/tasks?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:{'Prefer':'return=minimal'}});toast('Demanda excluída');await load();await loadTaskHistory()}catch(x){toast(x.message,true)}};
+            window.toggleAction=async(id,v)=>{const task=tasks.find(t=>t.miniAcoes.some(a=>a.id===id)),a=task?.miniAcoes.find(x=>x.id===id);try{await rest('/mini_actions?id=eq.'+encodeURIComponent(id),{method:'PATCH',headers:{'Prefer':'return=minimal'},body:JSON.stringify({concluida:v,updated_at:new Date().toISOString()})});await writeTaskHistory({task_id:task?.id||'',demanda:task?.nome||'',categoria:task?.categoria||'',evento:v?'Ação concluída':'Ação reaberta',detalhes:a?.descricao||'',responsavel:a?.responsavel||task?.responsaveis||''});await load();await loadTaskHistory()}catch(x){toast(x.message,true)}};
+            window.deleteAction=async id=>{if(!confirm('Excluir esta ação?'))return;const task=tasks.find(t=>t.miniAcoes.some(a=>a.id===id)),a=task?.miniAcoes.find(x=>x.id===id);try{await writeTaskHistory({task_id:task?.id||'',demanda:task?.nome||'',categoria:task?.categoria||'',evento:'Ação excluída',detalhes:a?.descricao||'',responsavel:a?.responsavel||task?.responsaveis||''});await rest('/mini_actions?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:{'Prefer':'return=minimal'}});await load();await loadTaskHistory()}catch(x){toast(x.message,true)}};
+
+            $('metricCat').addEventListener('change',renderProductivity);for(const id of['historySearch','historyPeriod','historyEvent','historyCat'])$(id).addEventListener(id==='historySearch'?'input':'change',renderTaskHistory);
+            setInterval(()=>{if(!document.hidden&&!$('taskDialog').open&&!$('actionDialog').open)loadTaskHistory()},5000);window.addEventListener('focus',()=>loadTaskHistory());document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadTaskHistory()});
+            loadTaskHistory(false);renderProductivity();
+          })();
+          </script>
+          '''
+          if '</body>' not in s:
+              raise SystemExit('Closing body not found')
+          p.write_text(s.replace('</body>', addon + '\n</body>'), encoding='utf-8')
+      - name: Commit changes
+        run: |
+          if git diff --quiet; then
+            echo 'No changes needed'
+            exit 0
+          fi
+          git config user.name 'eplautomacaointeligente'
+          git config user.email 'epl.automacaointeligente@hotmail.com'
+          git add task-app/index.html
+          git commit -m 'Adiciona produtividade, histórico e registro de soluções'
+          git push origin main
