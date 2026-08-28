@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/test-task-insights.yml'
 
+# rerun after Neon schema reload
 jobs:
   test:
     runs-on: ubuntu-latest
